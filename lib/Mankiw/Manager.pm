@@ -16,32 +16,26 @@ __PACKAGE__->mk_accessors(qw(
     env
     include_paths
     verbose
+    debug
 
     gearman
     theschwartz
 
     max_workers
     max_works_per_child
-
     timeout_to_wait_terminating
+
     is_terminated
 ));
 
 sub init {
     my $self = shift;
     for my $key (keys %{$self->env}) {
-        $ENV{$key} ||= $self->env->{$key};
+        $ENV{$key} = defined $ENV{$key} ? $ENV{$key} : $self->env->{$key};
     }
     for my $path (@{$self->include_paths || []}) {
         push @INC, $path;
     }
-}
-
-sub worker_type {
-    my $self = shift;
-    return 'gearman'     if $self->gearman;
-    return 'theschwartz' if $self->theschwartz;
-    die 'no type found';
 }
 
 sub run {
@@ -49,7 +43,7 @@ sub run {
     my $self = $class->SUPER::new($config);
        $self->init;
 
-    while ($self->manager->signal_received !~ /(?:TERM|INT)/) {
+    while ($self->to_be_continued) {
         $self->reload if $self->manager->signal_received eq 'HUP';
         $self->manager->start and next;
         $self->set_signal_handlers;
@@ -73,6 +67,13 @@ sub run {
     }
 
     $self->finish;
+}
+
+sub to_be_continued {
+    my $self = shift;
+    return if $self->debug && $self->manager->signal_received eq 'INT';
+    return if $self->manager->signal_received eq 'TERM';
+    1;
 }
 
 sub reload {
@@ -129,7 +130,7 @@ sub set_signal_handlers {
 
     $SIG{INT} = sub {
         my $signal = shift;
-        $self->is_terminated = 1;
+        exit 0;
     };
 }
 
@@ -159,6 +160,13 @@ sub worker {
     }
 
     $self->{_worker} ||= $worker;
+}
+
+sub worker_type {
+    my $self = shift;
+    return 'gearman'     if $self->gearman;
+    return 'theschwartz' if $self->theschwartz;
+    die 'no type found';
 }
 
 sub worker_pids {
