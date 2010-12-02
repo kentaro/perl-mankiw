@@ -1,6 +1,7 @@
 package Mankiw::Manager;
 use strict;
 use warnings;
+use YAML::Syck ();
 use UNIVERSAL::require;
 use Parallel::Prefork;
 
@@ -10,6 +11,8 @@ use Mankiw::Logger;
 use Mankiw::Gearman::Dispatcher;
 
 __PACKAGE__->mk_accessors(qw(
+    config_file
+
     env
     include_paths
     verbose
@@ -47,12 +50,13 @@ sub run {
        $self->init;
 
     while ($self->manager->signal_received !~ /(?:TERM|INT)/) {
+        $self->reload if $self->manager->signal_received eq 'HUP';
         $self->manager->start and next;
         $self->set_signal_handlers;
 
         my $count = $self->manager->num_workers + 1;
         $0 .= " [child process $count]";
-        $self->logger->debug("$class: $count started (pid: $$)");
+        $self->logger->debug("[debug] $class: $count started (pid: $$)");
 
         my $i = 0;
         while (($i++ < $self->max_works_per_child) && !$self->is_terminated) {
@@ -64,21 +68,47 @@ sub run {
             }
         }
 
-        $self->logger->debug("$class: $count exited (pid: $$)");
+        $self->logger->debug("[debug] $class: $count exited (pid: $$)");
         $self->manager->finish;
     }
 
     $self->finish;
 }
 
+sub reload {
+    my $self = shift;
+    undef $self->{_worker};
+
+    # for reloading functions
+    for my $worker_function (@{$self->gearman->{worker_functions}}) {
+        (my $path = $worker_function) =~ s{::}{/}g;
+        $path .= '.pm';
+        delete $INC{$path};
+    }
+
+    my $config = YAML::Syck::LoadFile($self->config_file);
+
+    # worker
+    $self->max_works_per_child($config->{max_works_per_child});
+
+    # gearman
+    $self->gearman = $config->{gearman};
+
+    # manager
+    $self->manager->max_workers($config->{max_workers});
+    $self->manager->num_workers(0);
+
+    $self->logger->debug('[debug] Reloaded due to HUP');
+}
+
 sub finish {
     my $self   = shift;
     my $signal = $self->manager->signal_received;
 
-    $self->logger->debug("=== Killed by $signal ($$)");
+    $self->logger->debug("[debug] *** Parent process has been killed by $signal ($$) ***");
 
     local $SIG{ALRM} = sub {
-        $self->logger->debug("Timeout to terminate children");
+        $self->logger->debug("[debug] Timeout: Waiting for children terminating");
         $self->kill_all_children;
         exit 1;
     };
@@ -100,7 +130,6 @@ sub set_signal_handlers {
     $SIG{INT} = sub {
         my $signal = shift;
         $self->is_terminated = 1;
-        exit 0;
     };
 }
 
@@ -124,7 +153,8 @@ sub worker {
                 Mankiw::Gearman::Dispatcher->can('dispatch'),
             )
         }
-    } else {
+    }
+    else {
         die 'not implemented yet';
     }
 
@@ -175,7 +205,7 @@ sub wait_all_children {
 sub kill_all_children {
     my $self = shift;
     return if $self->is_child;
-    my $message = sprintf 'Killing children: %s', $self->worker_pids;
+    my $message = sprintf '[debug] Killing children: %s', $self->worker_pids;
     $self->logger->debug($message);
     $self->manager->signal_all_children('KILL');
 }

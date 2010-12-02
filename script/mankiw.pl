@@ -1,7 +1,7 @@
 #!perl
 use strict;
 use warnings;
-use YAML;
+use YAML::Syck;
 use Getopt::Long;
 
 use Mankiw::Manager;
@@ -12,8 +12,9 @@ GetOptions(
     'v|verbose'                => \my $verbose,
 );
 
-my $config = YAML::LoadFile($config_file);
+my $config = YAML::Syck::LoadFile($config_file);
    $config->{gearman}{job_servers} = $gearman_job_servers if $gearman_job_servers;
-   $config->{verbose} = $verbose;
+   $config->{verbose}              = $verbose;
+   $config->{config_file}          = $config_file;
 
 Mankiw::Manager->run($config);
