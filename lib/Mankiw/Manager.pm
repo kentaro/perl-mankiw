@@ -52,7 +52,7 @@ sub run {
 
         my $count = $self->manager->num_workers + 1;
         $0 .= " [child process $count]";
-        $self->logger->info("$class: $count started (pid: $$)");
+        $self->logger->debug("$class: $count started (pid: $$)");
 
         my $i = 0;
         while (($i++ < $self->max_works_per_child) && !$self->is_terminated) {
@@ -64,7 +64,7 @@ sub run {
             }
         }
 
-        $self->logger->info("$class: $count exited (pid: $$)");
+        $self->logger->debug("$class: $count exited (pid: $$)");
         $self->manager->finish;
     }
 
@@ -75,10 +75,10 @@ sub finish {
     my $self   = shift;
     my $signal = $self->manager->signal_received;
 
-    $self->logger->info("=== Killed by $signal ($$)");
+    $self->logger->debug("=== Killed by $signal ($$)");
 
     local $SIG{ALRM} = sub {
-        $self->logger->info("Timeout to terminate children");
+        $self->logger->debug("Timeout to terminate children");
         $self->kill_all_children;
         exit 1;
     };
@@ -157,7 +157,7 @@ sub logger {
     $self->{_logger} ||= Mankiw::Logger->new(
         outputs => [[
             'Screen',
-            min_level => $self->verbose ? 'info' : 'notice',
+            min_level => $self->verbose ? 'debug' : 'info',
             newline   => 1,
         ]]
     );
@@ -176,7 +176,7 @@ sub kill_all_children {
     my $self = shift;
     return if $self->is_child;
     my $message = sprintf 'Killing children: %s', $self->worker_pids;
-    $self->logger->info($message);
+    $self->logger->debug($message);
     $self->manager->signal_all_children('KILL');
 }
 
