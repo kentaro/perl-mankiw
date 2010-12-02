@@ -2,7 +2,6 @@ package Mankiw::TheSchwartz;
 use strict;
 use warnings;
 
-sub worker {}
-sub client {}
+use base qw(TheSchwartz);
 
 !!1;
