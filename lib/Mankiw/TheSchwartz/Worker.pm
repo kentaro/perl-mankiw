@@ -3,7 +3,7 @@ use strict;
 use warnings;
 
 use parent qw(
-    TheSchwartz::Worker
+    TheSchwartz
     Mankiw::Class
 );
 

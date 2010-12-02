@@ -57,8 +57,11 @@ sub run {
             if ($self->worker_type eq 'gearman') {
                 $self->worker->work(stop_if => sub { $self->is_terminated });
             }
-            else {
-                die 'not implemented yet';
+            elsif ($self->worker_type eq 'theschwartz') {
+                while (!$self->is_terminated && !$self->worker->work_once) {
+                    warn 'job not found';
+                    sleep ($self->theschwartz->{delay_to_find_job} || 5);
+                }
             }
         }
 
@@ -81,7 +84,10 @@ sub reload {
     undef $self->{_worker};
 
     # for reloading functions
-    for my $worker_function (@{$self->gearman->{worker_functions}}) {
+    for my $worker_function (
+        @{$self->gearman->{worker_functions}},
+        @{$self->theschwartz->{worker_functions}}
+    ) {
         (my $path = $worker_function) =~ s{::}{/}g;
         $path .= '.pm';
         delete $INC{$path};
@@ -155,8 +161,14 @@ sub worker {
             )
         }
     }
-    else {
-        die 'not implemented yet';
+    elsif ($self->worker_type eq 'theschwartz') {
+        my $worker_class = $self->theschwartz->{worker_class} ||
+                           'Mankiw::TheSchwartz::Worker';
+        $worker_class->require or die $@;
+        $worker = $worker_class->new(databases => $self->theschwartz->{databases});
+        for my $worker_function (@{$self->theschwartz->{worker_functions}}) {
+            $worker->can_do($worker_function);
+        }
     }
 
     $self->{_worker} ||= $worker;
