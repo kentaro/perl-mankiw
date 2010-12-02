@@ -1,11 +1,11 @@
 env:
   MANKIW_ENV: test
-gearman:
-  job_servers:
-    - 127.0.0.1
-  worker_class: Mankiw::Gearman::Worker
+theschwartz:
+  dsn: dbi:mysql:dbname=theschwartz
+  user: nobody
+  pass: nobody
   worker_functions:
-    - Test::Mankiw::Worker::Gearman
+    - Test::Mankiw::Worker::TheSchwartz
 
 max_workers: 3
 max_works_per_child: 1
