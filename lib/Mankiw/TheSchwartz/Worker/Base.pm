@@ -4,12 +4,12 @@ use warnings;
 
 use parent qw(
     TheSchwartz::Worker
-    Mankiw::Class
+    Mankiw::Worker
 );
 
 sub work {
     my ($class, $job) = @_;
-    #die 'should be implemented by subclass';
+    die 'should be implemented by subclass';
 }
 
 !!1;

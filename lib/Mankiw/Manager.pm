@@ -34,7 +34,7 @@ sub init {
         $ENV{$key} = defined $ENV{$key} ? $ENV{$key} : $self->env->{$key};
     }
     for my $path (@{$self->include_paths || []}) {
-        push @INC, $path;
+        unshift @INC, $path;
     }
 }
 
