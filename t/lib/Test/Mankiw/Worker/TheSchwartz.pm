@@ -9,6 +9,7 @@ sub work {
     open my $fh, '>' . $job->arg->{tmpfile};
     print $fh $job->arg->{result};
     close $fh;
+    kill 'USR1', $job->arg->{owner_pid};
     $job->completed;
 }
 

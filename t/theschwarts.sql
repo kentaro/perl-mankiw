@@ -1,3 +1,6 @@
+CREATE DATABASE test_theschwartz;
+use test_theschwartz;
+
 CREATE TABLE funcmap (
         funcid         INT UNSIGNED PRIMARY KEY NOT NULL AUTO_INCREMENT,
         funcname       VARCHAR(255) NOT NULL,
