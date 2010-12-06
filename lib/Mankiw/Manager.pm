@@ -2,6 +2,7 @@ package Mankiw::Manager;
 use strict;
 use warnings;
 use YAML::Syck ();
+use Hash::Merge ();
 use UNIVERSAL::require;
 use Parallel::Prefork;
 
@@ -11,7 +12,8 @@ use Mankiw::Logger;
 use Mankiw::Gearman::Dispatcher;
 
 __PACKAGE__->mk_accessors(qw(
-    config_file
+    config_from_file
+    config_from_cli
 
     env
     include_paths
@@ -30,6 +32,10 @@ __PACKAGE__->mk_accessors(qw(
 
 sub init {
     my $self = shift;
+       $self->merge_config;
+
+    use YAML; warn Dump $self->theschwartz;
+
     for my $key (keys %{$self->env}) {
         $ENV{$key} = defined $ENV{$key} ? $ENV{$key} : $self->env->{$key};
     }
@@ -38,9 +44,21 @@ sub init {
     }
 }
 
+sub merge_config {
+    my $self   = shift;
+    my $config = Hash::Merge::merge(
+        $self->config_from_file,
+        $self->config_from_cli,
+    );
+
+    for my $key (keys %$config) {
+        $self->{$key} = $config->{$key};
+    }
+}
+
 sub run {
-    my ($class, $config) = @_;
-    my $self = $class->SUPER::new($config);
+    my ($class, %config) = @_;
+    my $self = $class->SUPER::new(\%config);
        $self->init;
 
     while ($self->to_be_continued) {
@@ -93,6 +111,8 @@ sub reload {
     }
 
     my $config = YAML::Syck::LoadFile($self->config_file);
+    $self->config_from_file = $config;
+    $self->merge_config;
 
     # worker
     $self->max_works_per_child($config->{max_works_per_child});
