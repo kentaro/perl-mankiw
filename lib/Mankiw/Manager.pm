@@ -34,8 +34,6 @@ sub init {
     my $self = shift;
        $self->merge_config;
 
-    use YAML; warn Dump $self->theschwartz;
-
     for my $key (keys %{$self->env}) {
         $ENV{$key} = defined $ENV{$key} ? $ENV{$key} : $self->env->{$key};
     }
