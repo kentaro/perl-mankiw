@@ -6,10 +6,10 @@ use FindBin;
 use lib "$FindBin::Bin/lib";
 use lib "$FindBin::Bin/../lib";
 
-use Test::Mankiw;
+use Mankiw::Test;
 use Mankiw::Gearman::Client;
 
-my ($gearmand_port, $gearmand_guard, $gearman_mankiw_guard) = Test::Mankiw->setup_gearman;
+my ($gearmand_port, $gearmand_guard, $gearman_mankiw_guard) = Mankiw::Test->setup_gearman;
 
 subtest 'gearman besic test' => sub {
     my $client = Mankiw::Gearman::Client->new(job_servers => ["127.0.0.1:$gearmand_port"]);

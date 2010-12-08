@@ -33,12 +33,14 @@ subtest 'theschwartz besic test' => sub {
         plan skip_all => 'timeout to wait theschwartz worker';
     };
 
-    my $client = Mankiw::TheSchwartz::Client->new(databases => [{ dsn => $dsn, user => 'root', pass => '' }]);
-       $client->insert('Test::Mankiw::Worker::TheSchwartz' => {
-           result    => 1,
-           tmpfile   => $filename,
-           owner_pid => $$,
-       });
+    my $client = Mankiw::TheSchwartz::Client->new(job_servers => [
+        { dsn => $dsn, user => 'root', pass => '' },
+    ]);
+    $client->insert('Test::Mankiw::Worker::TheSchwartz' => {
+        result    => 1,
+        tmpfile   => $filename,
+        owner_pid => $$,
+    });
 
     alarm 10;
     1 while ($waiting);

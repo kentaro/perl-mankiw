@@ -1,13 +1,15 @@
-env:
-  MANKIW_ENV: test
-theschwartz:
-  dsn: dbi:mysql:dbname=theschwartz
-  user: nobody
-  pass: nobody
-  worker_functions:
-    - Test::Mankiw::Worker::TheSchwartz
+job_servers:
+  - dsn: dbi:mysql:dbname=theschwartz
+    user: nobody
+    pass: nobody
 
+worker_class: Mankiw::TheSchwartz::Worker
+worker_functions:
+  - Test::Mankiw::Worker::TheSchwartz
 max_workers: 3
 max_works_per_child: 1
+
+env:
+  MANKIW_DEBUG: 1
 include_paths:
  - t/lib

@@ -16,6 +16,7 @@ my $theschwartz_config_file = "$FindBin::Bin/theschwartz.conf.yml";
 my $theschwartz_schema      = "$FindBin::Bin/theschwarts.sql";
 
 sub setup_gearman {
+    my $class = shift;
     my $gearmand_port  = empty_port();
     my $gearmand_guard = proc_guard(
         scalar(which('gearmand')),
@@ -26,10 +27,11 @@ sub setup_gearman {
     plan(skip_all => $@) if $@;
 
     my $gearman_mankiw_guard = proc_guard(
-        scalar(which('perl')),
-        $worker_manager,
+        scalar(which('perl')), $worker_manager,
+        'gearman',
         '-g', "127.0.0.1:$gearmand_port",
-        '-f', $gearman_config_file,
+        '-c', $gearman_config_file,
+        '-v',
     );
 
     (
@@ -40,13 +42,15 @@ sub setup_gearman {
 }
 
 sub setup_theschwartz {
+    my $class  = shift;
     my $mysqld = Test::mysqld->new(
         my_cnf => {
             'skip-networking' => '',
         }
     ) or plan skip_all => $Test::mysqld::errstr;
 
-    open my $fh, "< $theschwartz_schema";
+    my $schema_file = shift || $theschwartz_schema;
+    open my $fh, "< $schema_file";
     my $schema = do { local $/ = undef; <$fh> };
     close $fh;
 
@@ -56,10 +60,12 @@ sub setup_theschwartz {
 
     my $theschwartz_mankiw_guard = proc_guard(
         scalar(which('perl')), $worker_manager,
-        '-i', $mysqld->dsn(dbname => 'test_theschwartz'),
+        'theschwartz',
+        '-d', $mysqld->dsn(dbname => 'test_theschwartz'),
         '-u', 'root',
-        '-f',
-        $theschwartz_config_file,
+        '-p', '',
+        '-c', $theschwartz_config_file,
+        '-v',
     );
 
     ($mysqld, $theschwartz_mankiw_guard);

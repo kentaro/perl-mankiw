@@ -2,7 +2,6 @@ package Mankiw::Manager;
 use strict;
 use warnings;
 use YAML::Syck ();
-use Hash::Merge ();
 use UNIVERSAL::require;
 use Parallel::Prefork;
 
@@ -12,22 +11,27 @@ use Mankiw::Logger;
 use Mankiw::Gearman::Dispatcher;
 
 __PACKAGE__->mk_accessors(qw(
-    config_from_file
-    config_from_cli
+    config_precedent
+    config
+    config_file
 
     env
     include_paths
     verbose
-    debug
 
-    gearman
-    theschwartz
+    worker_type
 
+    job_servers
+    worker_class
+    worker_functions
     max_workers
     max_works_per_child
-    timeout_to_wait_terminating
+    delay_to_find_job
 
+    timeout_to_wait_terminating
     is_terminated
+
+    info
 ));
 
 sub init {
@@ -40,14 +44,18 @@ sub init {
     for my $path (@{$self->include_paths || []}) {
         unshift @INC, $path;
     }
+
+    $self->info ||= {};
 }
+
+sub is_debug_mode { !!$ENV{MANKIW_DEBUG} }
 
 sub merge_config {
     my $self   = shift;
-    my $config = Hash::Merge::merge(
-        $self->config_from_file,
-        $self->config_from_cli,
-    );
+    my $config = {
+       %{$self->config},
+       %{$self->config_precedent},
+    };
 
     for my $key (keys %$config) {
         $self->{$key} = $config->{$key};
@@ -62,77 +70,76 @@ sub run {
     while ($self->to_be_continued) {
         $self->reload if $self->manager->signal_received eq 'HUP';
         $self->manager->start and next;
-        $self->set_signal_handlers;
-
-        my $count = $self->manager->num_workers + 1;
-        $0 .= " [child process $count]";
-        $self->logger->debug("[debug] $class: $count started (pid: $$)");
-
-        my $i = 0;
-        while (($i++ < $self->max_works_per_child) && !$self->is_terminated) {
-            if ($self->worker_type eq 'gearman') {
-                $self->worker->work(stop_if => sub { $self->is_terminated });
-            }
-            elsif ($self->worker_type eq 'theschwartz') {
-                while (!$self->is_terminated && !$self->worker->work_once) {
-                    sleep ($self->theschwartz->{delay_to_find_job} || 5);
-                }
-            }
-        }
-
-        $self->logger->debug("[debug] $class: $count exited (pid: $$)");
+        $self->run_worker;
+        $self->logger->debug("$class: exited (pid: $$)");
         $self->manager->finish;
     }
 
     $self->finish;
 }
 
+sub identifier :lvalue {
+    my $self = shift;
+    $self->info->{processes}{$$}{identification};
+}
+
+sub run_worker {
+    my $self  = shift;
+    my $class = ref $self;
+
+    return if $self->is_parent;
+
+    $self->set_signal_handlers;
+
+    $0 .= " [child process]";
+    $self->logger->debug("$class: started (pid: $$)");
+
+    my $i = 0;
+    while (($i++ < $self->max_works_per_child) && !$self->is_terminated) {
+        $self->worker->work(
+            stop_if           => sub { $self->is_terminated },
+            delay_to_find_job => $self->delay_to_find_job || 5,
+        );
+    }
+}
+
 sub to_be_continued {
     my $self = shift;
-    return if $self->debug && $self->manager->signal_received eq 'INT';
+    return if $self->is_debug_mode && $self->manager->signal_received eq 'INT';
     return if $self->manager->signal_received eq 'TERM';
     1;
 }
 
 sub reload {
-    my $self = shift;
+    my $self   = shift;
+    my $config = YAML::Syck::LoadFile($self->config_file);
+    $self->config = $config;
+    $self->merge_config;
+
+    # for reloading worker
     undef $self->{_worker};
 
-    # for reloading functions
-    for my $worker_function (
-        @{$self->gearman->{worker_functions}},
-        @{$self->theschwartz->{worker_functions}}
-    ) {
+    # for reloading worker functions
+    for my $worker_function (@{$self->worker_functions}) {
         (my $path = $worker_function) =~ s{::}{/}g;
         $path .= '.pm';
         delete $INC{$path};
     }
 
-    my $config = YAML::Syck::LoadFile($self->config_file);
-    $self->config_from_file = $config;
-    $self->merge_config;
+    # reconfigure manager
+    $self->manager->max_workers($self->max_workers);
 
-    # worker
-    $self->max_works_per_child($config->{max_works_per_child});
-
-    # gearman
-    $self->gearman = $config->{gearman};
-
-    # manager
-    $self->manager->max_workers($config->{max_workers});
-    $self->manager->num_workers(0);
-
-    $self->logger->debug('[debug] Reloaded due to HUP');
+    $self->logger->debug('Reloaded due to HUP');
 }
 
 sub finish {
     my $self   = shift;
     my $signal = $self->manager->signal_received;
 
-    $self->logger->debug("[debug] *** Parent process has been killed by $signal ($$) ***");
+    $self->logger->debug("*** Parent process has been killed by $signal ($$) ***");
 
     local $SIG{ALRM} = sub {
-        $self->logger->debug("[debug] Timeout: Waiting for children terminating");
+        $self->logger->debug("Timeout: Waiting for children terminating");
         $self->kill_all_children;
         exit 1;
     };
@@ -161,41 +168,23 @@ sub worker {
     my $self = shift;
     return $self->{_worker} if $self->{_worker};
 
-    my $worker;
-    if ($self->worker_type eq 'gearman') {
-        my $worker_class = $self->gearman->{worker_class} ||
-                           'Mankiw::Gearman::Worker';
-        $worker_class->require or die $@;
-        $worker = $worker_class->new;
-        $worker->prefix($self->gearman->{prefix}) if $self->gearman->{prefix};
-        $worker->job_servers(@{$self->gearman->{job_servers}})
-            if scalar @{$self->gearman->{job_servers} || []};
+    my $worker_class = $self->worker_class || (
+           $self->worker_type eq 'theschwartz' ?
+               'Mankiw::TheSchwartz::Worker' : 'Mankiw::Gearman::Worker'
+       );
+       $worker_class->require or die $@;
+    my $worker = $worker_class->new;
+       $worker->set_job_servers($self->job_servers)
+           if scalar @{$self->job_servers || []};
 
-        for my $worker_function (@{$self->gearman->{worker_functions}}) {
-            $worker->register_function(
-                $worker_function,
-                Mankiw::Gearman::Dispatcher->can('dispatch'),
-            )
-        }
-    }
-    elsif ($self->worker_type eq 'theschwartz') {
-        my $worker_class = 'TheSchwartz';
-        $worker_class->require or die $@;
-        $worker = $worker_class->new(databases => $self->theschwartz->{databases});
-        for my $worker_function (@{$self->theschwartz->{worker_functions}}) {
-            $worker_function->require or die $@;
-            $worker->can_do($worker_function);
-        }
+    for my $worker_function (@{$self->worker_functions}) {
+        $worker->register_function(
+            $worker_function,
+            Mankiw::Gearman::Dispatcher->can('dispatch'),
+        )
     }
 
-    $self->{_worker} ||= $worker;
-}
-
-sub worker_type {
-    my $self = shift;
-    return 'gearman'     if $self->gearman;
-    return 'theschwartz' if $self->theschwartz;
-    die 'no type found';
+    $worker;
 }
 
 sub worker_pids {
@@ -242,7 +231,7 @@ sub wait_all_children {
 sub kill_all_children {
     my $self = shift;
     return if $self->is_child;
-    my $message = sprintf '[debug] Killing children: %s', $self->worker_pids;
+    my $message = sprintf 'Killing children: %s', $self->worker_pids;
     $self->logger->debug($message);
     $self->manager->signal_all_children('KILL');
 }

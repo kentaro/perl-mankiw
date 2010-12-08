@@ -15,8 +15,22 @@ __PACKAGE__->mk_classdata(
     )
 );
 
+__PACKAGE__->mk_accessors(qw(
+    client
+));
+
+sub job_servers {
+    my ($self, @job_servers) = @_;
+    die 'should be implemented by subclass';
+}
+
+sub register_function {
+    my ($self, $function_name, $function) = @_;
+    die 'should be implemented by subclass';
+}
+
 sub work {
-    my ($class, $job) = @_;
+    my ($class, %options) = @_;
     die 'should be implemented by subclass';
 }
 

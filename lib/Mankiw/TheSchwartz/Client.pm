@@ -1,24 +1,31 @@
 package Mankiw::TheSchwartz::Client;
 use strict;
 use warnings;
+
 use DBI;
+use Smart::Args;
 
 use parent qw(TheSchwartz::Simple);
 
 sub new {
-    my ($class, %args) = @_;
-    my @dbhs;
+    args my $class       => 'ClassName',
+         my $job_servers => 'ArrayRef';
 
-    for my $database (@{$args{databases} || []}) {
-        push @dbhs, DBI->connect($database->{dsn}, $database->{user} || '', $database->{pass});
+    my @dbhs;
+    for my $job_server (@$job_servers) {
+        push @dbhs, DBI->connect(
+            $job_server->{dsn},
+            $job_server->{user},
+            $job_server->{pass},
+        );
     }
 
     $class->SUPER::new(\@dbhs);
 }
 
-sub databases {
+sub job_servers {
     my $self = shift;
-    $self->{databases} = @_ && @_ == 1 ? $_[0] : [@_];
+    $self->{databases} = shift if $_[0];
     $self->{databases};
 }
 
