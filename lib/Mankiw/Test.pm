@@ -31,11 +31,9 @@ sub setup_gearman {
 
 sub setup_theschwartz {
     my ($class, %args)  = @_;
-    my $job_server = Test::mysqld->new(
-        my_cnf => {
-            'skip-networking' => '',
-        }
-    ) or plan skip_all => $Test::mysqld::errstr;
+    my %mysqld_options = $args{mysqld_options} ? %{$args{mysqld_options}} :
+        (my_cnf => { 'skip-networking' => '' });
+    my $job_server = Test::mysqld->new(%mysqld_options) or plan skip_all => $Test::mysqld::errstr;
 
     open my $fh, "< $args{schema_file}";
     my $schema = do { local $/ = undef; <$fh> };
@@ -48,7 +46,7 @@ sub setup_theschwartz {
     my $worker_manager = proc_guard(
         scalar(which('perl')), $args{worker_manager},
         'theschwartz',
-        '-d', $job_server->dsn(dbname => 'test_theschwartz'),
+        '-d', $job_server->dsn(dbname => $args{dbname} || 'test_theschwartz'),
         '-u', 'root',
         '-p', '',
         '-c', $args{config_file},
