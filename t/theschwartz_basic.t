@@ -10,8 +10,12 @@ use lib "$FindBin::Bin/../lib";
 use Mankiw::Test;
 use Mankiw::Theschwartz::Client;
 
-my ($mysqld, $theschwartz_mankiw_guard) = Mankiw::Test->setup_theschwartz;
-my $dsn = $mysqld->dsn(dbname => 'test_theschwartz');
+my ($job_server, $worker_manager) = Mankiw::Test->setup_theschwartz(
+    worker_manager => "$FindBin::Bin/../script/mankiw.pl",
+    schema_file    => "$FindBin::Bin/theschwarts.sql",
+    config_file    => "$FindBin::Bin/theschwartz.conf.yml",
+);
+my $dsn = $job_server->dsn(dbname => 'test_theschwartz');
 my ($fh, $filename) = tempfile(CLEANUP => 1);
 close $fh;
 

@@ -9,10 +9,13 @@ use lib "$FindBin::Bin/../lib";
 use Mankiw::Test;
 use Mankiw::Gearman::Client;
 
-my ($gearmand_port, $gearmand_guard, $gearman_mankiw_guard) = Mankiw::Test->setup_gearman;
+my ($job_server, $port, $worker_manager) = Mankiw::Test->setup_gearman(
+    worker_manager => "$FindBin::Bin/../script/mankiw.pl",
+    config_file    => "$FindBin::Bin/gearman.conf.yml",
+);
 
 subtest 'gearman besic test' => sub {
-    my $client = Mankiw::Gearman::Client->new(job_servers => ["127.0.0.1:$gearmand_port"]);
+    my $client = Mankiw::Gearman::Client->new(job_servers => ["127.0.0.1:$port"]);
     my $result = $client->insert('Test::Mankiw::Worker::Gearman' => {
         result => 1,
     });
